@@ -1,17 +1,22 @@
 package main
 
 import (
-    // "bytes"
-    "encoding/binary"
+	// "bytes"
+	"database/sql"
+	"encoding/binary"
+
 	// "encoding/json"
 	"math"
-	// "time"
-    "fmt"
+	"time"
+	"fmt"
+	"os"
 
 	// Custom Packge Imports
-	"process/process"
-	
+	"marketdata/main/process"
+	"marketdata/main/types"
+
 	"github.com/gorilla/websocket"
+	_ "github.com/mattn/go-sqlite3"
 )
 
 type InstrumentList struct {
@@ -25,25 +30,90 @@ type Instrument struct {
 	InstrumentList []InstrumentList `json:"InstrumentList"`
 }
 
-
-type Levels struct {
-	BidQuantity int32
-	AskQuantity int32
-	NoOfBidOrders int16
-	NoOfAskOrders int16
-	BidPrice float32
-	AskPrice float32
-}
-
 const (
-	Workers = 10
-	ChannelSize = 1000
+	Workers = 14
+	ChannelSize = 1024
 )
 
 
-func main() {
+var database *sql.DB
 
-	var token string = "eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzUxMiJ9.eyJpc3MiOiJkaGFuIiwicGFydG5lcklkIjoiIiwiZXhwIjoxNzYxNjI0MTM3LCJpYXQiOjE3NjE1Mzc3MzcsInRva2VuQ29uc3VtZXJUeXBlIjoiU0VMRiIsIndlYmhvb2tVcmwiOiIiLCJkaGFuQ2xpZW50SWQiOiIxMTA4ODcwNTEwIn0.bpa7zX1dMdZXEz2CmVoqYv31zOO5MqJxfO9VRXYsens7k05psCnVNwBKQ4wOaMGCiNcOW9Qs8G7VH0uGnK4UfA"
+func generateDailyTableName() string {
+    now := time.Now() // Type: time.Time
+    return now.Format("2006_01_02") // Type: string
+}
+
+func createtables(database *sql.DB) error {
+	// Generate the table name for today
+	var today string
+    today = generateDailyTableName() // Type: string
+	
+	var orderbookTableName = fmt.Sprintf("orderbook_%s", today) // concat with today
+	var marketbookTableName = fmt.Sprintf("marketbook_%s", today) // concat with today
+    
+    orderbookSQL := fmt.Sprintf(`
+        CREATE TABLE IF NOT EXISTS %s (
+            id INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
+            data TEXT,
+            timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        );`, orderbookTableName) // Type: string (the full SQL command)
+
+	marketbookSQL := fmt.Sprintf(`
+        CREATE TABLE IF NOT EXISTS %s (
+            id INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
+            data TEXT,
+            timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        );`, marketbookTableName) 
+
+    fmt.Printf("Attempting to verify/create table: %s\n", orderbookTableName)
+    fmt.Printf("Attempting to verify/create table: %s\n", marketbookTableName)
+    
+    if _, err := database.Exec(orderbookSQL); err != nil {
+		return fmt.Errorf("failed to create table %s: %w", orderbookTableName, err)
+	}
+
+	// Use = for the second assignment of err (FIXED: Go syntax for error handling)
+	if _, err := database.Exec(marketbookSQL); err != nil {
+		return fmt.Errorf("failed to create table %s: %w", marketbookTableName, err)
+	}
+
+	return nil
+}
+
+func main() {
+	
+	const databasePath string = "./db/development.db"
+	var err error
+	const dir string = "./db"
+
+	if err := os.MkdirAll(dir, 0755); err != nil {
+		fmt.Println("Error creating database directory %s: %v", dir, err)
+	}
+
+	database, err = sql.Open("sqlite3", databasePath)
+
+	if err != nil {
+		fmt.Println("Error opening database: %v", err)	
+	}
+	
+	var closeErr error
+
+	defer func() {
+		if closeErr = database.Close(); closeErr != nil {
+			fmt.Println("Error closing database: %v", closeErr)
+		}
+	}()
+
+	fmt.Println("Successfully connected to SQLite database:", databasePath)
+
+	if err = createtables(database); err != nil {
+		fmt.Println("Error creating tables: %v", err)
+	}
+	if err != nil {
+		fmt.Println("Error creating tables %v", err)
+	}
+	
+	var token string = "eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzUxMiJ9.eyJpc3MiOiJkaGFuIiwicGFydG5lcklkIjoiIiwiZXhwIjoxNzYxODgyNDU2LCJpYXQiOjE3NjE3OTYwNTYsInRva2VuQ29uc3VtZXJUeXBlIjoiU0VMRiIsIndlYmhvb2tVcmwiOiIiLCJkaGFuQ2xpZW50SWQiOiIxMTA4ODcwNTEwIn0.J55iXHymN20IFzXAQY4kCS4F4fiZaLn3txC1vnBBC_U-iXUJBFARit5W7Rn8_wu940Ht0Bko3_uQP7vtKd-cfw"
 	var clientId string = "1108870510"
     var url string
 	
@@ -60,7 +130,6 @@ func main() {
 	}
 
 	defer c.Close()	
-
 	
 	instrumentList := Instrument{
 		RequestCode:   21,
@@ -84,16 +153,18 @@ func main() {
 			},
 		},
 	}
+
+	// go Marketdepth()
 	
 	err = c.WriteJSON(instrumentList)
 	
 	if err != nil {
-		panic(err)
+		fmt.Println("Error:", err)
 	}
 
 	// Workerpool	
 	var messages chan []byte = make(chan []byte, ChannelSize)
-	fmt.Println("Type of message channel:", messages)
+	// fmt.Println("Type of message channel for FullPacketData:", messages)
 	
 	var i int
 	for i = 0; i < Workers; i++ {
@@ -107,7 +178,8 @@ func main() {
 			fmt.Println("Error:", err)
 		}	
 		
-		fmt.Println("Data:", data)
+		// fmt.Println("Data:", data)
+		// fmt.Println("Data Length:", len(data))
 
 		select {
 			case messages <- data:	
@@ -125,52 +197,68 @@ func worker(id int, ch <-chan []byte) {
 
 func parsing(data []byte) {
 
-	fmt.Println("LENGTH:", len(data))
-	fmt.Println("LENGTH Before Depth:", len(data[0:62]))
+	var fullDataFeed types.FullPacket
+	// var instrumentName string
+	var instrumentSecurityID uint32
+
+	instrumentSecurityID = binary.LittleEndian.Uint32(data[4:8])
+
+	// fmt.Println("type of %T\n", instrumentSecurityID)
+
+	switch instrumentSecurityID {
+		case 163:
+			fullDataFeed.InstrumentName = "APOLLO TYRE"	
+		case 1333:
+			fullDataFeed.InstrumentName = "HDFC BANK"
+		case 11723:
+			fullDataFeed.InstrumentName = "JSWSTEEL"
+		case 19020:
+			fullDataFeed.InstrumentName = "JSWINFRA"
+		default:
+			fullDataFeed.InstrumentName = "None"
+	}
 		
 	// Extracting Response Header
-	feedResponseCode := data[0]
-	messageLength := binary.LittleEndian.Uint16(data[1:3])
-	exchangeSegment := data[3]
-	securityID := binary.LittleEndian.Uint32(data[4:8])
+	fullDataFeed.FeedResponseCode = data[0]
+	fullDataFeed.MessageLength = binary.LittleEndian.Uint16(data[1:3])
+	fullDataFeed.ExchangeSegment = data[3]
+	fullDataFeed.SecurityID = instrumentSecurityID
 
 	// PacketData
 	bits := binary.LittleEndian.Uint32(data[8:12])
-    lastTradedPrice := math.Float32frombits(bits)
+    fullDataFeed.LastTradedPrice = math.Float32frombits(bits)
 
-	lastTradedQuantity := binary.LittleEndian.Uint16(data[12:14])
-	lastTradedTime := binary.LittleEndian.Uint32(data[14:18])
+	fullDataFeed.LastTradedQuantity = binary.LittleEndian.Uint16(data[12:14])
+	fullDataFeed.LastTradedTime = binary.LittleEndian.Uint32(data[14:18])
 
 	bitsAP := binary.LittleEndian.Uint32(data[18:22])
-    averageTradePrice := math.Float32frombits(bitsAP)
+    fullDataFeed.AverageTradePrice = math.Float32frombits(bitsAP)
 
-	volume := binary.LittleEndian.Uint32(data[22:26])
-	totalSellQuantity := binary.LittleEndian.Uint32(data[26:30])
-	totalBuyQuantity := binary.LittleEndian.Uint32(data[30:34])
-	oi := binary.LittleEndian.Uint32(data[34:38])
-	hoi := binary.LittleEndian.Uint32(data[38:42])
-	loi := binary.LittleEndian.Uint32(data[42:46])
+	fullDataFeed.Volume = binary.LittleEndian.Uint32(data[22:26])
+	fullDataFeed.TotalSellQuantity = binary.LittleEndian.Uint32(data[26:30])
+	fullDataFeed.TotalBuyQuantity = binary.LittleEndian.Uint32(data[30:34])
+	fullDataFeed.OI = binary.LittleEndian.Uint32(data[34:38])
+	fullDataFeed.HOI = binary.LittleEndian.Uint32(data[38:42])
+	fullDataFeed.LOI = binary.LittleEndian.Uint32(data[42:46])
 
 	bitsOV := binary.LittleEndian.Uint32(data[46:50])
-    dayOpenValue := math.Float32frombits(bitsOV)
+    fullDataFeed.DayOpenValue = math.Float32frombits(bitsOV)
 
 	bitsCV := binary.LittleEndian.Uint32(data[50:54])
-    dayCloseValue := math.Float32frombits(bitsCV)
+    fullDataFeed.DayCloseValue = math.Float32frombits(bitsCV)
 
 	bitsHV := binary.LittleEndian.Uint32(data[54:58])
-    dayHighValue := math.Float32frombits(bitsHV)
+    fullDataFeed.DayHighValue = math.Float32frombits(bitsHV)
 
 	bitsLV := binary.LittleEndian.Uint32(data[58:62])
-   	dayLowValue := math.Float32frombits(bitsLV)
+   	fullDataFeed.DayLowValue = math.Float32frombits(bitsLV)
 		
-	fmt.Println("Data Length:", len(data))	
-	var levels []Levels
+	var levels []types.Levels5
 	marketDepthData := data[62:len(data)]
-	fmt.Println("Market Depth Data Length:", len(marketDepthData))
 	var i int = 0
 
 	for i < len(marketDepthData) {
-		var level Levels
+		var level types.Levels5
 
 		bidQuantity := binary.LittleEndian.Uint32(marketDepthData[i : i+4])
 		level.BidQuantity = int32(bidQuantity)
@@ -199,40 +287,9 @@ func parsing(data []byte) {
 		i += 4
 			
 		levels = append(levels, level)
-		fmt.Println("I values:", i)
 	}
 		
-	fmt.Println("feedResponseCode:", feedResponseCode)
-	fmt.Println("MessageLength:", messageLength)
-
-	fmt.Println("ExchangeSegment:", exchangeSegment)
-	fmt.Println("securityID:", securityID)
-
-	// PacketData
-	// fmt.Println("LastTradedPrice:", lastTradedPrice)
-	fmt.Println("LastTradedPrice:", lastTradedPrice)
-	fmt.Println("LastTradedQuantity:", lastTradedQuantity)
-	fmt.Println("LastTradedTime:", lastTradedTime)
-	fmt.Println("AverageTradePrice:", averageTradePrice)
-	fmt.Println("Volume:", volume)
-
-	fmt.Println("totalSellQuantity:", totalSellQuantity)
-	fmt.Println("totalBuyQuantity:", totalBuyQuantity)
-	fmt.Println("Oi:", oi)
-	fmt.Println("Hoi:", hoi)
-	fmt.Println("Loi:", loi)
-	fmt.Println("dayOpenValue:", dayOpenValue)
-	fmt.Println("dayCloseValue:", dayCloseValue)
-	fmt.Println("dayHighValue:", dayHighValue)
-	fmt.Println("dayLowValue:", dayLowValue)
-
-	fmt.Println("Market Depth Data:", marketDepthData)
-	fmt.Println("--- Depth ---")
-		
-	for _, lvl := range levels {
-		fmt.Printf("BidQuantity: %d, AskQuantity: %d, NoOfBidOrders: %d, NoOfAskOrders: %d, BidPrice: %.2f, AskPrice: %.2f\n", lvl.BidQuantity, lvl.AskQuantity, lvl.NoOfBidOrders, lvl.NoOfAskOrders, lvl.BidPrice, lvl.AskPrice)
-	}
-
-	fmt.Println("-----------------------------")
+	fullDataFeed.Levels5 = levels
+	process.Process(fullDataFeed, database)
 }
 

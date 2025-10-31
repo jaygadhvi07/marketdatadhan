@@ -82,9 +82,13 @@ func createtables(database *sql.DB) error {
 
 func main() {
 	
-	const databasePath string = "./db/development.db"
+	/*const databasePath string = "./db/development.db"
+	const dir string = "./db"*/
+
+	const databasePath string = "../databases/development.db"
+	const dir string = "./databases"
+
 	var err error
-	const dir string = "./db"
 
 	if err := os.MkdirAll(dir, 0755); err != nil {
 		fmt.Println("Error creating database directory %s: %v", dir, err)
@@ -113,7 +117,8 @@ func main() {
 		fmt.Println("Error creating tables %v", err)
 	}
 	
-	var token string = "eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzUxMiJ9.eyJpc3MiOiJkaGFuIiwicGFydG5lcklkIjoiIiwiZXhwIjoxNzYxODgyNDU2LCJpYXQiOjE3NjE3OTYwNTYsInRva2VuQ29uc3VtZXJUeXBlIjoiU0VMRiIsIndlYmhvb2tVcmwiOiIiLCJkaGFuQ2xpZW50SWQiOiIxMTA4ODcwNTEwIn0.J55iXHymN20IFzXAQY4kCS4F4fiZaLn3txC1vnBBC_U-iXUJBFARit5W7Rn8_wu940Ht0Bko3_uQP7vtKd-cfw"
+
+	var token string = "eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzUxMiJ9.eyJpc3MiOiJkaGFuIiwicGFydG5lcklkIjoiIiwiZXhwIjoxNzYxOTY5NjkzLCJpYXQiOjE3NjE4ODMyOTMsInRva2VuQ29uc3VtZXJUeXBlIjoiU0VMRiIsIndlYmhvb2tVcmwiOiIiLCJkaGFuQ2xpZW50SWQiOiIxMTA4ODcwNTEwIn0.ldtrKVlUu755WjecWwchB9mWzBcPPUcNnOjmLNxdVf7m63UKH42lYcCvqhpZVTGfTRQl2lIAvh_ssXN0LRC7iA"
 	var clientId string = "1108870510"
     var url string
 	

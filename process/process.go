@@ -129,11 +129,12 @@ func Process(fullDataFeed types.FullPacket, database *sql.DB) {
 }
 
 type InstrumentOrders struct {
-	bids []Orderbook
-	asks []Orderbook
+	InstrumentName string
+	Bids []Orderbook
+	Asks []Orderbook
 }
 
-var sequance map[string]InstrumentOrders
+// var sequance = make(map[string]InstrumentOrders)
 
 func sequances(bids []Orderbook, asks []Orderbook) {
 	
@@ -149,6 +150,30 @@ func sequances(bids []Orderbook, asks []Orderbook) {
 			if j == len(asks) {
 				if asks[i].Price >= tempask[len(tempask) - 1].Price {
 					tempask = append(tempask, asks[i])
+					/*var instrumentName string = asks[i].InstrumentName
+					if _, ok := sequance[instrumentName]; !ok {
+						sequance[instrumentName] = InstrumentOrders{
+							InstrumentName: instrumentName,
+							Bids:           []Orderbook{}, // empty slice
+							Asks:           []Orderbook{}, // empty slice
+						}
+					}
+
+					if len(sequance[instrumentName].Asks) > 0 {
+						if sequance[instrumentName].Asks[len(sequance[instrumentName].Asks) - 1].Price < tempask[0].Price {
+							sequance[instrumentName] = InstrumentOrders{
+								InstrumentName: sequance[instrumentName].InstrumentName,
+								Bids:           sequance[instrumentName].Bids,
+								Asks:           append(sequance[instrumentName].Asks, tempask...),
+							}
+						}
+					} else {
+						sequance[instrumentName] = InstrumentOrders{
+							InstrumentName: sequance[instrumentName].InstrumentName,
+							Bids:           sequance[instrumentName].Bids,
+							Asks:           append(sequance[instrumentName].Asks, tempask...),
+						}
+					}*/
 					break
 				}
 			}
@@ -177,6 +202,29 @@ func sequances(bids []Orderbook, asks []Orderbook) {
 			if l == len(bids) {
 				if bids[k].Price <= tempbid[len(tempbid) - 1].Price {
 					tempbid = append(tempbid, bids[k])	
+
+					/*var instrumentName string = bids[k].InstrumentName
+					if _, ok := sequance[instrumentName]; !ok {
+						sequance[instrumentName] = InstrumentOrders{
+							InstrumentName: instrumentName, Bids: []Orderbook{}, Asks: []Orderbook{},
+						}
+					}
+
+					if len(sequance[instrumentName].Bids) > 0 {
+						if sequance[instrumentName].Bids[len(sequance[instrumentName].Bids) - 1].Price < tempbid[0].Price {
+							sequance[instrumentName] = InstrumentOrders{
+								InstrumentName: sequance[instrumentName].InstrumentName,
+								Bids:           append(sequance[instrumentName].Bids, tempbid...),
+								Asks:           sequance[instrumentName].Asks,
+							}
+						}
+					} else {
+						sequance[instrumentName] = InstrumentOrders{
+							InstrumentName: sequance[instrumentName].InstrumentName, 
+							Bids: append(sequance[instrumentName].Bids, bids[k]), 
+							Asks: sequance[instrumentName].Asks,
+						}
+					}*/
 					break
 				}
 			}
@@ -192,4 +240,5 @@ func sequances(bids []Orderbook, asks []Orderbook) {
 	}
 
 	fmt.Println("BID Sequance", tempbid)
+	// fmt.Println("Sequance:", sequance)
 }

@@ -18,7 +18,7 @@ import (
 
 func Marketdepth() {
 
-	var token string = "eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzUxMiJ9.eyJpc3MiOiJkaGFuIiwicGFydG5lcklkIjoiIiwiZXhwIjoxNzYxOTY5NjkzLCJpYXQiOjE3NjE4ODMyOTMsInRva2VuQ29uc3VtZXJUeXBlIjoiU0VMRiIsIndlYmhvb2tVcmwiOiIiLCJkaGFuQ2xpZW50SWQiOiIxMTA4ODcwNTEwIn0.ldtrKVlUu755WjecWwchB9mWzBcPPUcNnOjmLNxdVf7m63UKH42lYcCvqhpZVTGfTRQl2lIAvh_ssXN0LRC7iA"
+	var token string = "eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzUxMiJ9.eyJpc3MiOiJkaGFuIiwicGFydG5lcklkIjoiIiwiZXhwIjoxNzY0NjU0MDE2LCJpYXQiOjE3NjQ1Njc2MTYsInRva2VuQ29uc3VtZXJUeXBlIjoiU0VMRiIsIndlYmhvb2tVcmwiOiIiLCJkaGFuQ2xpZW50SWQiOiIxMTA4ODcwNTEwIn0.H1UbuffQExfBs4Vwik1O5n0iO98mXSo6lQC6J6qoRja6r7-NfsH5zaxbAzNh_LY_7cZwHEEMaRbQVVvJ6ollUg"
 
 	var clientId string = "1108870510"
     var url string
@@ -33,6 +33,14 @@ func Marketdepth() {
 	}
 
 	defer c.Close()	
+
+	/*
+		symbol i am going to use
+		JIOFIN.NS
+		COALINDIA.NS
+		ONGC.NS
+		SHRIRAMFIN.NS
+	*/
 
 	instrumentList := Instrument{
 		RequestCode: 23,

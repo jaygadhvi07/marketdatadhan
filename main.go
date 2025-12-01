@@ -49,7 +49,9 @@ func createtables(database *sql.DB) error {
     today = generateDailyTableName() // Type: string
 	
 	var orderbookTableName = fmt.Sprintf("orderbook_%s", today) // concat with today
+	var orderbookTopTableName = fmt.Sprintf("orderbook_top_%s", today) // concat with today
 	var marketbookTableName = fmt.Sprintf("marketbook_%s", today) // concat with today
+	var ordersTableName = fmt.Sprintf("orders_%s", today) // concat with today
     
     orderbookSQL := fmt.Sprintf(`
         CREATE TABLE IF NOT EXISTS %s (
@@ -58,6 +60,13 @@ func createtables(database *sql.DB) error {
             timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         );`, orderbookTableName) // Type: string (the full SQL command)
 
+	orderbookTopSQL := fmt.Sprintf(`
+        CREATE TABLE IF NOT EXISTS %s (
+            id INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
+            data TEXT,
+            timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        );`, orderbookTopTableName) // Type: string (the full SQL command)
+
 	marketbookSQL := fmt.Sprintf(`
         CREATE TABLE IF NOT EXISTS %s (
             id INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
@@ -65,17 +74,49 @@ func createtables(database *sql.DB) error {
             timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         );`, marketbookTableName) 
 
+	ordersSQL := fmt.Sprintf(`
+        CREATE TABLE IF NOT EXISTS %s (
+            id INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
+			instrument TEXT,
+			type TEXT CHECK(type IN ('LONG', 'SHORT')),
+			quantity INTEGER DEFAULT 0,
+			quote REAL DEFAULT 0.0,
+			price REAL DEFAULT 0.0,
+			stoploss REAL DEFAULT 0.0,
+			squareoff REAL DEFAULT 0.0,
+			settledprice REAL DEFAULT 0.0,
+			slippage REAL DEFAULT 0.0,
+			flag TEXT CHECK(flag IN ('ACTIVE', 'SETTLED')),
+            timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        );`, ordersTableName) // Type: string (the full SQL command)
+
     fmt.Printf("Attempting to verify/create table: %s\n", orderbookTableName)
+    fmt.Printf("Attempting to verify/create table: %s\n", orderbookTopTableName)
     fmt.Printf("Attempting to verify/create table: %s\n", marketbookTableName)
+    fmt.Printf("Attempting to verify/create table: %s\n", ordersTableName)
+
+	start := time.Now()
     
     if _, err := database.Exec(orderbookSQL); err != nil {
 		return fmt.Errorf("failed to create table %s: %w", orderbookTableName, err)
 	}
 
+	if _, err := database.Exec(orderbookTopSQL); err != nil {
+		return fmt.Errorf("failed to create table %s: %w", orderbookTopTableName, err)
+	}
+
+
 	// Use = for the second assignment of err (FIXED: Go syntax for error handling)
 	if _, err := database.Exec(marketbookSQL); err != nil {
 		return fmt.Errorf("failed to create table %s: %w", marketbookTableName, err)
 	}
+
+	if _, err := database.Exec(ordersSQL); err != nil {
+		return fmt.Errorf("failed to create table %s: %w", ordersTableName, err)
+	}
+
+
+	fmt.Printf("Completed orderbook table creation in %v\n", time.Since(start))
 
 	return nil
 }
@@ -110,15 +151,19 @@ func main() {
 
 	fmt.Println("Successfully connected to SQLite database:", databasePath)
 
+	start := time.Now()
+
 	if err = createtables(database); err != nil {
 		fmt.Println("Error creating tables: %v", err)
 	}
 	if err != nil {
 		fmt.Println("Error creating tables %v", err)
 	}
-	
 
-	var token string = "eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzUxMiJ9.eyJpc3MiOiJkaGFuIiwicGFydG5lcklkIjoiIiwiZXhwIjoxNzYxOTY5NjkzLCJpYXQiOjE3NjE4ODMyOTMsInRva2VuQ29uc3VtZXJUeXBlIjoiU0VMRiIsIndlYmhvb2tVcmwiOiIiLCJkaGFuQ2xpZW50SWQiOiIxMTA4ODcwNTEwIn0.ldtrKVlUu755WjecWwchB9mWzBcPPUcNnOjmLNxdVf7m63UKH42lYcCvqhpZVTGfTRQl2lIAvh_ssXN0LRC7iA"
+	fmt.Printf("Completed orderbook table creation in %v\n", time.Since(start))
+
+	var token string = "eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzUxMiJ9.eyJpc3MiOiJkaGFuIiwicGFydG5lcklkIjoiIiwiZXhwIjoxNzY0NjU0MDE2LCJpYXQiOjE3NjQ1Njc2MTYsInRva2VuQ29uc3VtZXJUeXBlIjoiU0VMRiIsIndlYmhvb2tVcmwiOiIiLCJkaGFuQ2xpZW50SWQiOiIxMTA4ODcwNTEwIn0.H1UbuffQExfBs4Vwik1O5n0iO98mXSo6lQC6J6qoRja6r7-NfsH5zaxbAzNh_LY_7cZwHEEMaRbQVVvJ6ollUg"
+
 	var clientId string = "1108870510"
     var url string
 	
@@ -201,6 +246,7 @@ func worker(id int, ch <-chan []byte) {
 }
 
 func parsing(data []byte) {
+
 
 	var fullDataFeed types.FullPacket
 	// var instrumentName string

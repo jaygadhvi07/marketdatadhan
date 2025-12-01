@@ -40,6 +40,7 @@ type Levels20 struct {
 
 type Orderbook struct {
 	InstrumentName string
+    LastTradedTime uint32
 	PacketType string
 	MessageLength uint16
 	FeedResponseCode byte

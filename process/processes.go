@@ -2,7 +2,7 @@ package process
 
 import (
 	"database/sql"
-	"encoding/json"
+	// "encoding/json"
 	"fmt"
 	"crypto/rand"
 	"math/big"
@@ -336,7 +336,7 @@ func placeorder(connection *sql.DB, order Order) {
 	} 
 }
 
-func process(connection *sql.DB, order Levels1) {
+func processes(connection *sql.DB, order Levels1) {
 
 	squareoff(connection, order)
 

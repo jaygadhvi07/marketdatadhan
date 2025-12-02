@@ -162,7 +162,7 @@ func main() {
 
 	fmt.Printf("Completed orderbook table creation in %v\n", time.Since(start))
 
-	var token string = "eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzUxMiJ9.eyJpc3MiOiJkaGFuIiwicGFydG5lcklkIjoiIiwiZXhwIjoxNzY0NjU0MDE2LCJpYXQiOjE3NjQ1Njc2MTYsInRva2VuQ29uc3VtZXJUeXBlIjoiU0VMRiIsIndlYmhvb2tVcmwiOiIiLCJkaGFuQ2xpZW50SWQiOiIxMTA4ODcwNTEwIn0.H1UbuffQExfBs4Vwik1O5n0iO98mXSo6lQC6J6qoRja6r7-NfsH5zaxbAzNh_LY_7cZwHEEMaRbQVVvJ6ollUg"
+	var token string = "eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzUxMiJ9.eyJpc3MiOiJkaGFuIiwicGFydG5lcklkIjoiIiwiZXhwIjoxNzY0NzM5NDE4LCJpYXQiOjE3NjQ2NTMwMTgsInRva2VuQ29uc3VtZXJUeXBlIjoiU0VMRiIsIndlYmhvb2tVcmwiOiIiLCJkaGFuQ2xpZW50SWQiOiIxMTA4ODcwNTEwIn0.TrLehgVFaoA6eESA2_exUX0nLNw0P559kfp1-Ia6gObTy5FrQ92VXMhHmNyY-HN7tCFhTMSdFuj68wvMa50weg"
 
 	var clientId string = "1108870510"
     var url string
@@ -187,19 +187,19 @@ func main() {
 		InstrumentList: []InstrumentList{
 			{
 				ExchangeSegment: "NSE_EQ",
-				SecurityId:      "1333", //   NSE,E,1333,INE040A01034,EQUITY,,HDFCBANK,HDFC BANK LTD,HDFC Bank,ES,EQ,1.0,,,,5.0000,NA,N,N,N,NA,A,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,4.545455,
+				SecurityId:      "526",    // BPCL
 			},
 			{
 				ExchangeSegment: "NSE_EQ",
-				SecurityId:      "11723", 
+				SecurityId:      "1424",   // HINDZINC
 			},
 			{
 				ExchangeSegment: "NSE_EQ",
-				SecurityId:      "19020" , 
+				SecurityId:      "3063" ,  // VEDL
 			},
 			{
 				ExchangeSegment: "NSE_EQ",
-				SecurityId:      "163", 
+				SecurityId:      "163",    // APOLLO TYRE
 			},
 		},
 	}
@@ -256,15 +256,21 @@ func parsing(data []byte) {
 
 	// fmt.Println("type of %T\n", instrumentSecurityID)
 
+	/* 
+		Symbol : VEDL -> 3063
+		Symbol : BPCL -> 526
+		Symbol : HINDZINC -> 1424
+	*/
+
 	switch instrumentSecurityID {
 		case 163:
 			fullDataFeed.InstrumentName = "APOLLO TYRE"	
-		case 1333:
-			fullDataFeed.InstrumentName = "HDFC BANK"
-		case 11723:
-			fullDataFeed.InstrumentName = "JSWSTEEL"
-		case 19020:
-			fullDataFeed.InstrumentName = "JSWINFRA"
+		case 526:
+			fullDataFeed.InstrumentName = "BPCL"
+		case 1424:
+			fullDataFeed.InstrumentName = "HINDZINC"
+		case 3063:
+			fullDataFeed.InstrumentName = "VEDL"
 		default:
 			fullDataFeed.InstrumentName = "None"
 	}

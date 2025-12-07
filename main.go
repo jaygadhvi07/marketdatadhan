@@ -162,7 +162,7 @@ func main() {
 
 	fmt.Printf("Completed orderbook table creation in %v\n", time.Since(start))
 
-	var token string = "eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzUxMiJ9.eyJpc3MiOiJkaGFuIiwicGFydG5lcklkIjoiIiwiZXhwIjoxNzY0NzM5NDE4LCJpYXQiOjE3NjQ2NTMwMTgsInRva2VuQ29uc3VtZXJUeXBlIjoiU0VMRiIsIndlYmhvb2tVcmwiOiIiLCJkaGFuQ2xpZW50SWQiOiIxMTA4ODcwNTEwIn0.TrLehgVFaoA6eESA2_exUX0nLNw0P559kfp1-Ia6gObTy5FrQ92VXMhHmNyY-HN7tCFhTMSdFuj68wvMa50weg"
+	var token string = "eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzUxMiJ9.eyJpc3MiOiJkaGFuIiwicGFydG5lcklkIjoiIiwiZXhwIjoxNzY0OTkyNjM0LCJpYXQiOjE3NjQ5MDYyMzQsInRva2VuQ29uc3VtZXJUeXBlIjoiU0VMRiIsIndlYmhvb2tVcmwiOiIiLCJkaGFuQ2xpZW50SWQiOiIxMTA4ODcwNTEwIn0.ebDrXEOibwThKqmcKqBhUbyTe5pQBxVlT4X9dl-VH7XwKU37VyLVFYRjYr1U5ff9R5aIxyk0NgYof3cE9Mt5vQ"
 
 	var clientId string = "1108870510"
     var url string
@@ -221,18 +221,22 @@ func main() {
 		go worker(i, messages)
 	}
 
+	completed := make(chan bool, 1)
+	go timesup(database, completed, c)
+
+
 	for {
 		_, data, err := c.ReadMessage()	
 		
 		if err != nil {
 			fmt.Println("Error:", err)
 		}	
-		
-		// fmt.Println("Data:", data)
-		// fmt.Println("Data Length:", len(data))
 
 		select {
-			case messages <- data:	
+			case messages <- data:
+			case<-completed:
+				close(messages)
+				return
 			default:
 				fmt.Println("Dropping Messages (channel full)")
 		}
@@ -241,6 +245,10 @@ func main() {
 
 func worker(id int, ch <-chan []byte) {
 	for data := range ch {
+		if len(data) == 0 {
+			fmt.Println("no message with data")
+			continue
+		}
 		parsing(data)
 	}	
 }
@@ -348,5 +356,32 @@ func parsing(data []byte) {
 		
 	fullDataFeed.Levels5 = levels
 	process.Process(fullDataFeed, database)
+}
+
+func timesup(connection *sql.DB, complete chan bool, c *websocket.Conn) {
+	
+	tick := time.NewTicker(1 * time.Second)
+	defer tick.Stop()
+
+	for {
+		select {
+			case <-tick.C:
+				var val bool = process.Cleanup(connection)
+
+                if val {
+                    // 1. Send the signal (goes into the buffer immediately)
+                    complete <- true 
+
+                    // 2. Interrupt the blocking c.ReadMessage() call
+                    // Set the read deadline to a time in the past (time.Now()).
+                    // This forces c.ReadMessage() to return an error (usually i/o timeout).
+                    err := c.SetReadDeadline(time.Now()) 
+                    if err != nil {
+                        fmt.Println("Error setting deadline:", err)
+                    }
+                    return // Exit the timesup goroutine
+                }
+		}
+	}
 }
 

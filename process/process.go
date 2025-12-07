@@ -22,6 +22,7 @@ type Order struct {
 	Squareoff float32	  `json:"Squareoff"`
 	Slippage float32      `json:"Slippage"`
 	Sp float32 			  `json:"Sp"`
+	Timestamp string      `json:"Timestamp"`
 }
 
 
@@ -41,6 +42,7 @@ type Orderbook struct {
 type Levels1 struct {
 	InstrumentName string
 	LastTradedTime uint32
+	Ltt string
 	BidQuantity int32
 	NoOfBidOrders int16
 	BidPrice float32
@@ -59,6 +61,7 @@ func insertTopOrderbook(database *sql.DB, topBid Orderbook, topAsk Orderbook, la
 	if topBid.InstrumentName == topAsk.InstrumentName {
 		levelOne.InstrumentName = topBid.InstrumentName
 		levelOne.LastTradedTime = topBid.LastTradedTime
+		levelOne.Ltt = topBid.Ltt
 		
 		levelOne.BidQuantity = topBid.Quantity
 		levelOne.NoOfBidOrders = topBid.NoOfOrders
@@ -151,6 +154,11 @@ func insertMarketbook(database *sql.DB, fullPacket types.FullPacket) error {
 	return nil
 }
 
+func formattedtime(lastTradedTime int64) string {
+	timestamp := lastTradedTime
+	convertedtime := time.Unix(int64(timestamp), 0).UTC()
+	return convertedtime.String()
+}
 
 func Process(fullDataFeed types.FullPacket, database *sql.DB) {
 
@@ -161,12 +169,6 @@ func Process(fullDataFeed types.FullPacket, database *sql.DB) {
 	var lastTradedPrice float32 = fullDataFeed.LastTradedPrice
 
 	var err error
-
-	err = insertMarketbook(database, fullDataFeed)
-	if err != nil {
-		fmt.Println("Error while saving:", err)
-	}
-	
 	var i int
 	for i = 0; i < len(fullDataFeed.Levels5); i++ {	
 		
@@ -175,6 +177,7 @@ func Process(fullDataFeed types.FullPacket, database *sql.DB) {
 
 		bid.InstrumentName = fullDataFeed.InstrumentName
 		bid.LastTradedTime = fullDataFeed.LastTradedTime
+		bid.Ltt = formattedtime(int64(fullDataFeed.LastTradedTime))
 		bid.Type = "Bid"
 		bid.Quantity = fullDataFeed.Levels5[i].BidQuantity 
 		bid.Price = fullDataFeed.Levels5[i].BidPrice
@@ -184,6 +187,7 @@ func Process(fullDataFeed types.FullPacket, database *sql.DB) {
 
 		ask.InstrumentName = fullDataFeed.InstrumentName
 		ask.LastTradedTime = fullDataFeed.LastTradedTime
+		ask.Ltt = formattedtime(int64(fullDataFeed.LastTradedTime))
 		ask.Type = "Ask"
 		ask.Quantity = fullDataFeed.Levels5[i].AskQuantity 
 		ask.Price = fullDataFeed.Levels5[i].AskPrice
@@ -192,21 +196,14 @@ func Process(fullDataFeed types.FullPacket, database *sql.DB) {
 		asks = append(asks, ask)
 	}
 
-	/*var order Levels1
-	order.InstrumentName = bids[0].InstrumentName
-	order.LastTradedTime = bids[0].LastTradedTime
-	order.BidQuantity = bids[0].BidQuantity
-	order.NoOfBidOrders = bids[0].NoOfBidOrders 
-	order.BidPrice = bids[0].BidPrice
-	order.AskQuantity = asks[0].AskQuantity
-	order.NoOfAskOrders = asks[0].NoOfAskOrders
-	order.AskPrice = asks[0].AskPrice
-	order.Ltp = lastTradedPrice*/
-
-
 	err =  insertTopOrderbook(database, bids[0], asks[0], lastTradedPrice)	
 	if err != nil {
 		fmt.Println("Error while saving", err)
+	}
+
+	err = insertMarketbook(database, fullDataFeed)
+	if err != nil {
+		fmt.Println("Error while saving:", err)
 	}
 }
 

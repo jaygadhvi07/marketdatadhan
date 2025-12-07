@@ -10,6 +10,7 @@ import (
 	"log"
 	// "marketdata/main/types"
 	"time"
+	"sync"
 	// "math"
 )
 
@@ -106,6 +107,66 @@ type Instruments struct {
 	Bidquantperc float64
 	Askquantperc float64
 }
+
+func Cleanup(connection *sql.DB) bool {
+
+	ist, err := time.LoadLocation("Asia/Kolkata")
+	if err != nil {
+		fmt.Println("Error loading IST")
+	}
+
+	current := time.Now()
+	timing := time.Date(current.Year(), current.Month(), current.Day(), 15, 28, 0, 0, ist)
+
+	// fmt.Println("timing", timing)
+	// fmt.Println("current", current)
+
+	if time.Now().Before(timing) {
+		// fmt.Println("Yes!! current is before timing")
+	} else if time.Now().After(timing) {
+		fmt.Println("No!! current is after timing")
+		// Squareoff the board
+		var today string = generateDailyTableName()
+		var table string = fmt.Sprintf("orders_%s", today)
+		var statement string = fmt.Sprintf("SELECT * FROM %s WHERE flag = 'ACTIVE'", table)
+		rows, err := connection.Query(statement)
+		
+		for rows.Next() {
+			var odr Order
+			var timestamp string
+			var flag string
+			err = rows.Scan(&odr.Id, &odr.InstrumentName, &odr.Type, &odr.Quantity, &odr.QuotePrice, &odr.Price, &odr.Stoploss, &odr.Squareoff, &odr.Sp, &odr.Slippage, &flag, &timestamp)
+
+			if err != nil {
+				fmt.Println("Error:", err)
+			}
+			
+			// fmt.Println("order", odr.Id)
+
+			var updatestatement string = fmt.Sprintf("UPDATE %s SET flag = 'SETTLED' WHERE id = %d", table, odr.Id)
+			result, err := connection.Exec(updatestatement)
+
+			if err != nil {
+				fmt.Errorf("Error executing update: %w", err)
+			}
+
+			affected, err := result.RowsAffected()
+
+			if err != nil {
+				fmt.Errorf("Error checking affected rows: %w", err)
+			}
+			
+			if affected > 0 {
+				fmt.Println("Settled!!!")
+			} 
+		}	
+
+		fmt.Println("all orders settled, timesup!!!")
+		return true
+	}	
+	return false
+}
+
 
 func squareoff(connection *sql.DB, toporder Levels1) {
 
@@ -266,6 +327,7 @@ func squareoff(connection *sql.DB, toporder Levels1) {
 
 
 var sequence = make(map[string]Instruments)
+var mu sync.Mutex
 
 var orderno int64 = 0
 
@@ -315,9 +377,7 @@ func placeorder(connection *sql.DB, order Order) {
 	orders = existingorder(connection, order)
 	var today string = generateDailyTableName()
 	var table string = fmt.Sprintf("orders_%s", today)
-
-	tradetimeunix := uint32(time.Now().Unix())
-	tradetime := timeconvert(tradetimeunix)
+	var timestamp string = formattedtime(time.Now().Unix())
 
 	if len(orders) == 0 {
 		// API Order
@@ -325,7 +385,7 @@ func placeorder(connection *sql.DB, order Order) {
 	
 		// Database Order
 		var statement string = fmt.Sprintf("INSERT INTO %s (instrument, type, quantity, quote, price, stoploss, squareoff, settledprice, slippage, flag, timestamp) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)", table)
-		op, err := connection.Exec(statement, order.InstrumentName, order.Type, order.Quantity, order.QuotePrice, order.Price, order.Stoploss, order.Squareoff, order.Sp, order.Slippage, "ACTIVE", tradetime)
+		op, err := connection.Exec(statement, order.InstrumentName, order.Type, order.Quantity, order.QuotePrice, order.Price, order.Stoploss, order.Squareoff, order.Sp, order.Slippage, "ACTIVE", timestamp)
 
 		if err != nil {
 			log.Printf("error inserting into order table: %v", err)
@@ -344,7 +404,7 @@ func processes(connection *sql.DB, order Levels1) {
 	bidorder.OrderNo = orderno + 1
 	bidorder.InstrumentName = order.InstrumentName
 	bidorder.LastTradedTime = order.LastTradedTime
-	bidorder.Ltt = timeconvert(order.LastTradedTime)
+	bidorder.Ltt = order.Ltt
 	bidorder.Type = "Bid"
 	bidorder.Price = order.BidPrice
 	bidorder.Quantity = order.BidQuantity
@@ -356,7 +416,7 @@ func processes(connection *sql.DB, order Levels1) {
 	askorder.OrderNo = orderno + 1
 	askorder.InstrumentName = order.InstrumentName
 	askorder.LastTradedTime = order.LastTradedTime
-	askorder.Ltt = timeconvert(order.LastTradedTime)
+	askorder.Ltt = order.Ltt
 	askorder.Type = "Ask"
 	askorder.Price = order.AskPrice
 	askorder.Quantity = order.AskQuantity
@@ -364,6 +424,8 @@ func processes(connection *sql.DB, order Levels1) {
 	askorder.Spread = order.AskPrice - order.BidPrice
 	askorder.Ltp = order.Ltp
 
+	mu.Lock()
+	defer mu.Unlock()
 	_, ok := sequence[order.InstrumentName];
 	if !ok {
 		sequence[order.InstrumentName] = Instruments{
@@ -377,104 +439,44 @@ func processes(connection *sql.DB, order Levels1) {
 	}
 
 	io := sequence[order.InstrumentName]
-
+	
 	if bidorder.Type == "Bid" {
-		if len(io.Bids) > 0 {
-			lastsequence := io.Bids[len(io.Bids) - 1]
-			lastrecord := lastsequence[len(lastsequence) - 1]
+		io.Bidquant += bidorder.Quantity
+		if io.Bidquant > io.Askquant {
+			if io.Bidquant > 2*io.Askquant {
+				var longorder Order
+				longorder.InstrumentName = bidorder.InstrumentName
+				longorder.Type = "LONG"	
+				longorder.Price = bidorder.Price
+				longorder.Quantity = 0
+				longorder.QuotePrice = 0.0
+				longorder.Stoploss = bidorder.Price - ((bidorder.Price * 0.3) / 100)
+				longorder.Squareoff = bidorder.Price + ((bidorder.Price * 0.7) / 100)
+				longorder.Sp = bidorder.Ltp
+				longorder.Slippage = 0.0
 
-			if lastrecord == bidorder {
-				return	
+				placeorder(connection, longorder)
 			}
-
-			if lastrecord.Price < bidorder.Price {
-				lastsequence = append(lastsequence, bidorder)
-				io.Bids[len(io.Bids) - 1] = lastsequence
-			} else {
-
-				if len(lastsequence) > 3 {
-					/*fmt.Print("---- Last Bid Sequence End---- and a new sequence starts ----")
-					fmt.Println(lastsequence)*/
-
-					for _, row := range lastsequence {
-						// fmt.Println("ROW", row)
-						io.Bidquant += row.Quantity
-					}
-
-					if io.Bidquant > io.Askquant {
-						if io.Bidquant > 2*io.Askquant {
-							var longorder Order
-							longorder.InstrumentName = bidorder.InstrumentName
-							longorder.Type = "LONG"	
-							longorder.Price = bidorder.Price
-							// longorder.Quantity = positionsizing(connection, longorder)
-							longorder.Quantity = 0
-							longorder.QuotePrice = 0.0
-							longorder.Stoploss = bidorder.Price - ((bidorder.Price * 0.3) / 100)
-							longorder.Squareoff = bidorder.Price + ((bidorder.Price * 0.7) / 100)
-							longorder.Sp = bidorder.Ltp
-							longorder.Slippage = 0.0
-
-							placeorder(connection, longorder)
-						}
-					}
-				}
-								
-				io.Bids = append(io.Bids, []Orderbook{bidorder})
-			}
-
-		} else {
-			io.Bids = append(io.Bids, []Orderbook{bidorder})
 		}
 	}
 
 	if askorder.Type == "Ask" {
-		if len(io.Asks) > 0 {
-			lastsequence := io.Asks[len(io.Asks) - 1]
-			lastrecord := lastsequence[len(lastsequence) - 1]
+		io.Askquant += askorder.Quantity
+		if io.Askquant > io.Bidquant {
+			if io.Askquant > 2*io.Bidquant { 
+				var shortorder Order
+				shortorder.InstrumentName = askorder.InstrumentName
+				shortorder.Type = "SHORT"
+				shortorder.Price = askorder.Price
+				shortorder.Quantity = 0
+				shortorder.QuotePrice = 0.0
+				shortorder.Stoploss = askorder.Price + ((askorder.Price * 0.3) / 100)
+				shortorder.Squareoff = askorder.Price - ((askorder.Price * 0.7) / 100)
+				shortorder.Sp = askorder.Ltp
+				shortorder.Slippage = 0.0
 
-			if lastrecord == askorder {
-				return
+				placeorder(connection, shortorder)
 			}
-			
-			if lastrecord.Price > askorder.Price {
-				lastsequence = append(lastsequence, askorder)
-				io.Asks[len(io.Asks) - 1] = lastsequence
-			} else {
-				
-				if len(lastsequence) > 3 {
-					/*fmt.Print("---- Last Ask Sequence End---- and a new sequence starts ----")
-					fmt.Println(lastsequence)*/
-
-					// fmt.Println("asks", lastsequence)
-					for _, row := range lastsequence {
-						io.Askquant += row.Quantity
-					}
-					
-					if io.Askquant > io.Bidquant {
-
-						if io.Askquant > 2*io.Bidquant { 
-							var shortorder Order
-							shortorder.InstrumentName = askorder.InstrumentName
-							shortorder.Type = "SHORT"
-							shortorder.Price = askorder.Price
-							shortorder.Quantity = 0
-							shortorder.QuotePrice = 0.0
-							shortorder.Stoploss = askorder.Price + ((askorder.Price * 0.3) / 100)
-							shortorder.Squareoff = askorder.Price - ((askorder.Price * 0.7) / 100)
-							shortorder.Sp = askorder.Ltp
-							shortorder.Slippage = 0.0
-
-							placeorder(connection, shortorder)
-						}
-					}
-				}
-
-				io.Asks = append(io.Asks, []Orderbook{askorder})
-			}
-			
-		} else {
-			io.Asks = append(io.Asks, []Orderbook{askorder})
 		}
 	}
 
